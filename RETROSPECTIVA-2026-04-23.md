@@ -21,6 +21,7 @@ El build de producción (`npm run build`) finaliza con **exit code 0** y 22 ruta
 | Base de datos | MongoDB (driver nativo, sin Mongoose) |
 | Autenticación | Magic Link con JWT (jsonwebtoken) |
 | Email | MailHog vía Nodemailer |
+| Almacenamiento de ficheros | Rustfs (compatible S3) vía AWS SDK v3 |
 | Estado global | React Context (`GlobalContext`) |
 
 ---
@@ -66,6 +67,7 @@ npm install -D @types/jsonwebtoken @types/nodemailer
 | `/api/auth/verify` | GET | Valida token, marca `used: true`, hace upsert del usuario, devuelve JWT de sesión (7 días) |
 | `/api/registros` | GET / POST | GET: todos (funcionario) o propios (administrado). POST: crea registro con número correlativo |
 | `/api/registros/[id]` | GET | Detalle de registro con control de acceso por rol |
+| `/api/registros/[id]` | PATCH | Actualiza el campo `estado` del registro (`presentado` / `en_tramite` / `resuelto`). Solo funcionario. |
 | `/api/upload` | POST | Sube fichero a S3/Rustfs (límite 10 MB, tipos permitidos: pdf, jpg, png, gif, webp, doc, docx). Devuelve objeto `Adjunto` |
 | `/api/expedientes` | GET / POST | Sólo funcionario. POST crea expediente y actualiza `registro.estado` a `en_tramite` |
 | `/api/expedientes/[id]` | GET | Detalle del expediente (funcionario) |
@@ -111,6 +113,13 @@ MONGODB_DB=sede_electronica
 MAILHOG_HOST=localhost
 MAIL_PORT=1027
 
+# Rustfs / S3 (Docker en puerto 10000)
+AWS_USERNAME=minioadmin
+AWS_PASSWORD=minioadmin1234
+AWS_REGION=us-east-1
+AWS_URL=http://localhost:10000
+AWS_BUCKET=sede-electronica
+
 NODE_ENV=development
 NEXT_PUBLIC_API_URL=http://localhost:3000
 
@@ -134,6 +143,9 @@ Servicios externos requeridos (Docker):
 ```bash
 # MongoDB — puerto 27017
 # MailHog — puerto 1025 (SMTP) y 8025 (UI web)
+# Rustfs (compatible S3) — API en puerto 10000, consola web en puerto 9001
+#   Credenciales: minioadmin / minioadmin1234
+#   El bucket 'sede-electronica' se crea automáticamente en el primer upload
 ```
 
 ---
@@ -187,6 +199,7 @@ export default function Page() {
 
 | Problema | Solución |
 |---------|----------|
+| `POST /api/upload` fallaba con `NoSuchBucket` porque el bucket no existía en Rustfs | `lib/s3.ts` ahora auto-crea el bucket en el primer upload usando `HeadBucketCommand` + `CreateBucketCommand` con una promise cacheada a nivel de módulo |
 | PowerShell bloqueaba `npm` con política de ejecución | Usar siempre `cmd /c "..."` como prefijo en PowerShell |
 | `app/page.tsx` y `app/layout.tsx` tenían boilerplate de Next.js concatenado al final del código personalizado | Se creó un script Node temporal `fix-page.js` para truncar el archivo en el primer `}` standalone después de la línea 100 |
 | Build falla: `useSearchParams() should be wrapped in a suspense boundary` en `/auth/verify` | Separar en `VerifyContent` (usa `useSearchParams`) y `VerifyPage` (exporta con `<Suspense>`) |
@@ -243,6 +256,22 @@ El `@import` de Google Fonts en `globals.css` causaba un error de parsing en Tai
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 ```
+
+---
+
+## Cambios — Sesión 2026-06-02
+
+### `lib/s3.ts` — Auto-creación del bucket
+Se añadió la función `ensureBucket()` que comprueba la existencia del bucket con `HeadBucketCommand` y lo crea con `CreateBucketCommand` si no existe. El resultado se cachea en una promise a nivel de módulo (`bucketReady`) para que la comprobación solo ocurra una vez por proceso, sin overhead en uploads posteriores. `uploadFile` llama a `getBucketReady()` antes de ejecutar `PutObjectCommand`.
+
+### `app/api/registros/[id]/route.ts` — Endpoint PATCH
+Nuevo handler `PATCH` que permite a un funcionario cambiar el campo `estado` de un registro a `presentado`, `en_tramite` o `resuelto`. Devuelve el documento actualizado. Rechaza con 403 si el llamante no es funcionario y con 400 si el `estado` recibido no es uno de los valores permitidos.
+
+### `app/funcionario/expedientes/page.tsx` — Botón "Marcar resuelto"
+Cada tarjeta de expediente incluye ahora un botón verde **"Marcar resuelto"** que llama a `PATCH /api/registros/:registroId` con `{ estado: 'resuelto' }`. El botón:
+- Usa `e.preventDefault()` para evitar que el click navegue al detalle del expediente.
+- Muestra `...` mientras la petición está en vuelo (`resolvingId`).
+- Se convierte en **"✓ Resuelto"** (fondo verde atenuado, deshabilitado) al completarse con éxito, usando un `Set<string>` local (`resolvedIds`) para no hacer refetch.
 
 ---
 

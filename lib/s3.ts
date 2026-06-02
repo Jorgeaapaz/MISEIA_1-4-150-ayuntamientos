@@ -3,6 +3,8 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  CreateBucketCommand,
+  HeadBucketCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -18,7 +20,23 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.AWS_BUCKET || 'sede-electronica';
 
+let bucketReady: Promise<void> | null = null;
+
+async function ensureBucket(): Promise<void> {
+  try {
+    await s3.send(new HeadBucketCommand({ Bucket: BUCKET }));
+  } catch {
+    await s3.send(new CreateBucketCommand({ Bucket: BUCKET }));
+  }
+}
+
+function getBucketReady(): Promise<void> {
+  if (!bucketReady) bucketReady = ensureBucket();
+  return bucketReady;
+}
+
 export async function uploadFile(key: string, body: Buffer, contentType: string): Promise<void> {
+  await getBucketReady();
   await s3.send(
     new PutObjectCommand({
       Bucket: BUCKET,

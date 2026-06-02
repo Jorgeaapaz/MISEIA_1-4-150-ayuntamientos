@@ -15,6 +15,31 @@ export default function FuncionarioExpedientesPage() {
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  async function markResuelto(e: React.MouseEvent, registroId: string) {
+    e.preventDefault();
+    if (!token || resolvedIds.has(registroId)) return;
+    setResolvingId(registroId);
+    try {
+      const res = await fetch(`/api/registros/${registroId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'resuelto' }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Error al actualizar el estado');
+      } else {
+        setResolvedIds((prev) => new Set(prev).add(registroId));
+      }
+    } catch {
+      setError('Error de red al actualizar el estado');
+    } finally {
+      setResolvingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -64,30 +89,48 @@ export default function FuncionarioExpedientesPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {expedientes.map((exp) => (
-              <Link key={String(exp._id)} href={`/funcionario/expedientes/${String(exp._id)}`}>
-                <Card hover>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-xs text-[--accent]">{exp.codigo}</span>
-                        <span className="text-xs text-[--muted] bg-[--surface-2] px-2 py-0.5 rounded border border-[--border]">
-                          {exp.tipoExpediente}
-                        </span>
+            {expedientes.map((exp) => {
+              const registroId = String(exp.registroId);
+              const isResolved = resolvedIds.has(registroId);
+              const isResolving = resolvingId === registroId;
+              return (
+                <div key={String(exp._id)} className="relative">
+                  <Link href={`/funcionario/expedientes/${String(exp._id)}`}>
+                    <Card hover>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-xs text-[--accent]">{exp.codigo}</span>
+                            <span className="text-xs text-[--muted] bg-[--surface-2] px-2 py-0.5 rounded border border-[--border]">
+                              {exp.tipoExpediente}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[--muted]">
+                            {exp.actuaciones?.length || 0} actuaciones
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <p className="text-xs text-[--muted]">
+                            {new Date(exp.fechaCreacion).toLocaleDateString('es-ES')}
+                          </p>
+                          <button
+                            onClick={(e) => markResuelto(e, registroId)}
+                            disabled={isResolved || isResolving}
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                              isResolved
+                                ? 'bg-green-700/40 text-green-300 cursor-default'
+                                : 'bg-green-600 hover:bg-green-500 text-white cursor-pointer'
+                            }`}
+                          >
+                            {isResolving ? '...' : isResolved ? '✓ Resuelto' : 'Marcar resuelto'}
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-xs text-[--muted]">
-                        {exp.actuaciones?.length || 0} actuaciones
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-[--muted]">
-                        {new Date(exp.fechaCreacion).toLocaleDateString('es-ES')}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              </Link>
-            ))}
+                    </Card>
+                  </Link>
+                </div>
+              );
+            })}
           </div>
         )}
       </main>
