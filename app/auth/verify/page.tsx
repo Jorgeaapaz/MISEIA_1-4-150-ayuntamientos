@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useGlobal } from '@/context/GlobalContext';
 import { Header } from '@/components/layout/Header';
@@ -11,8 +11,12 @@ function VerifyContent() {
   const { setAuth } = useGlobal();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const verifyAttempted = useRef(false);
 
   useEffect(() => {
+    if (verifyAttempted.current) return;
+    verifyAttempted.current = true;
+
     const token = searchParams.get('token');
     if (!token) {
       setStatus('error');

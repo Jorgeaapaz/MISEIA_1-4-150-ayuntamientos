@@ -21,7 +21,6 @@ El build de producción (`npm run build`) finaliza con **exit code 0** y 22 ruta
 | Base de datos | MongoDB (driver nativo, sin Mongoose) |
 | Autenticación | Magic Link con JWT (jsonwebtoken) |
 | Email | MailHog vía Nodemailer |
-| Almacenamiento | Rustfs/MinIO (compatible S3, `@aws-sdk/client-s3`) |
 | Estado global | React Context (`GlobalContext`) |
 
 ---
@@ -109,12 +108,6 @@ npm install -D @types/jsonwebtoken @types/nodemailer
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=sede_electronica
 
-AWS_USERNAME=minioadmin
-AWS_PASSWORD=minioadmin1234
-AWS_REGION=us-east-1
-AWS_URL=http://localhost:10000
-AWS_BUCKET=sede-electronica
-
 MAILHOG_HOST=localhost
 MAIL_PORT=1027
 
@@ -141,7 +134,6 @@ Servicios externos requeridos (Docker):
 ```bash
 # MongoDB — puerto 27017
 # MailHog — puerto 1025 (SMTP) y 8025 (UI web)
-# Rustfs/MinIO — puerto 10000
 ```
 
 ---
@@ -153,7 +145,6 @@ Servicios externos requeridos (Docker):
 | Aplicación (dev) | http://localhost:3000 |
 | Aplicación (prod) | http://localhost:3000 |
 | MailHog UI (ver emails) | http://localhost:8025 |
-| MinIO/Rustfs console | http://localhost:10000 |
 
 ---
 
