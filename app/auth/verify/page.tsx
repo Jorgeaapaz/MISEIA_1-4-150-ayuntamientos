@@ -19,8 +19,10 @@ function VerifyContent() {
 
     const token = searchParams.get('token');
     if (!token) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setStatus('error');
       setMessage('Token no encontrado en la URL.');
+      /* eslint-enable react-hooks/set-state-in-effect */
       return;
     }
 

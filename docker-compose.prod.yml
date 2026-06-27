@@ -1,0 +1,22 @@
+services:
+  ayuntamientos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ayuntamientos
+    restart: unless-stopped
+    env_file:
+      - env.production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ayuntamientos.rule=Host(`ayuntamientos.deviaaps.com`)"
+      - "traefik.http.routers.ayuntamientos.entrypoints=websecure"
+      - "traefik.http.routers.ayuntamientos.tls=true"
+      - "traefik.http.routers.ayuntamientos.tls.certresolver=cloudflare"
+      - "traefik.http.services.ayuntamientos-svc.loadbalancer.server.port=3000"
+    networks:
+      - miseia-net
+
+networks:
+  miseia-net:
+    external: true

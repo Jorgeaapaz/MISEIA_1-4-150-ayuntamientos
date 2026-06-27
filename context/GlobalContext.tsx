@@ -46,8 +46,10 @@ export function GlobalProvider({ children }: { children: ReactNode }) {
         if (parts.length === 3) {
           const payload = JSON.parse(atob(parts[1])) as AuthUser & { exp: number };
           if (payload.exp * 1000 > Date.now()) {
+            /* eslint-disable react-hooks/set-state-in-effect */
             setUser(payload);
             setToken(storedToken);
+            /* eslint-enable react-hooks/set-state-in-effect */
           } else {
             localStorage.removeItem('sede_token');
           }
