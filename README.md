@@ -4,6 +4,26 @@ Sistema **SaaS de sede electrónica** para la administración pública española
 
 ---
 
+## Arquitectura
+
+Diagrama completo en [`docs/architecture.md`](docs/architecture.md).
+
+```mermaid
+graph TB
+    Browser["🌐 Browser\n(React 19 + GlobalContext)"]
+    NextJS["⚡ Next.js 16\n(App Router + API Routes)"]
+    MongoDB[("🍃 MongoDB 7")]
+    RustFS["📦 RustFS / S3\nficheros adjuntos"]
+    MailHog["📧 MailHog\nSMTP (dev)"]
+
+    Browser -->|"fetch + Bearer JWT"| NextJS
+    NextJS -->|"mongodb driver"| MongoDB
+    NextJS -->|"AWS SDK v3"| RustFS
+    NextJS -->|"nodemailer"| MailHog
+```
+
+---
+
 ## Funcionalidades Implementadas
 
 ### Magic Link Authentication
@@ -132,24 +152,19 @@ npm install
 
 ### Variables de entorno
 
-Crea `.env.local` en la raíz del proyecto:
-
-```env
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=sede_electronica
-
-AWS_USERNAME=minioadmin
-AWS_PASSWORD=minioadmin1234
-AWS_REGION=us-east-1
-AWS_URL=http://localhost:10000
-AWS_BUCKET=sede-electronica
-
-MAILHOG_HOST=localhost
-MAIL_PORT=1025
-
-NEXT_PUBLIC_API_URL=http://localhost:3000
-JWT_SECRET=magik-link-dev-secret-2026
+```bash
+cp .env.example .env.local
+# Editar .env.local con los valores reales
 ```
+
+El archivo `.env.example` en la raíz contiene todas las variables necesarias con valores de ejemplo. Las variables más importantes:
+
+| Variable | Descripción |
+|---|---|
+| `MONGODB_URI` | Cadena de conexión a MongoDB |
+| `JWT_SECRET` | Secreto de firma JWT (mínimo 32 chars) |
+| `AWS_URL` | URL de RustFS/MinIO (S3-compatible) |
+| `NEXT_PUBLIC_API_URL` | URL base de la app |
 
 ### Arrancar en desarrollo
 
@@ -164,6 +179,21 @@ npm run dev
 ```bash
 npm run build
 npm start
+```
+
+---
+
+## Testing
+
+```bash
+# Tests unitarios (Jest) — lib/auth, registro-numero, expediente-codigo
+npm test
+
+# Tests con cobertura
+npm run test:coverage
+
+# Tests E2E (Playwright) — requiere app corriendo en localhost:3000
+npm run test:e2e
 ```
 
 ---
@@ -216,7 +246,109 @@ POST /api/expedientes/EXP-2026-00001/actuaciones
 
 ---
 
+## Decisiones Técnicas
+
+Decisiones clave con trade-offs reales. Ver [`docs/decisions/`](docs/decisions/) para los ADRs completos.
+
+| Decisión | Elegido | Alternativa | Trade-off Principal |
+|---|---|---|---|
+| Auth storage | JWT en `localStorage` | Cookies `httpOnly` | XSS risk vs CSRF risk; cookies requieren CSRF tokens adicionales |
+| Base de datos | MongoDB 7 | PostgreSQL | Flexibilidad de esquema con arrays embebidos vs integridad referencial nativa |
+| Autenticación | Magic Link (JWT 15min) | Password + bcrypt | Sin gestión de contraseñas vs dependencia del email del usuario |
+| Router Next.js | App Router | Pages Router | Server Components + layouts anidados vs mayor madurez y más ejemplos en comunidad |
+
+---
+
+## Uso de IA y Revisión Crítica
+
+Este proyecto se desarrolló con asistencia de **Claude Code (claude-sonnet-4-6)**. A continuación se documenta qué se revisó y modificó respecto a los borradores generados:
+
+### Correcciones aplicadas
+- **Doble verificación del magic link**: el borrador inicial llamaba a `verifyToken` dos veces en la page `/auth/verify` (una en el componente y otra en la API route). Se eliminó la verificación redundante en el componente, dejando solo la de la API route.
+- **Configuración del cliente S3 para RustFS**: el borrador usaba la configuración estándar de AWS S3; se corrigió para apuntar al endpoint local de RustFS (`forcePathStyle: true`, `endpoint: AWS_URL`).
+- **Tipos TypeScript en API routes**: varios borradores usaban `any` en los handlers. Se sustituyeron por los tipos correctos de `lib/types.ts` y se añadió `extractTokenFromHeader` tipado.
+- **Auto-creación del bucket S3**: se añadió lógica de verificación y creación automática del bucket si no existe al iniciar, corrección no presente en el borrador original.
+
+### Lo que se validó manualmente
+- Flujo completo de magic link end-to-end con MailHog
+- Subida de ficheros a RustFS y verificación en la consola de MinIO
+- Transición de estados de registros (presentado → en_tramite → resuelto)
+
+---
+
+## Deploy a Producción
+
+**URL pública:** https://ayuntamientos.deviaaps.com
+
+La app se despliega en una VM de Google Cloud (GCI) usando Docker + Traefik. El pipeline de GitHub Actions gestiona el deploy automático en cada push a `master`.
+
+### Primer deploy manual
+
+```bash
+# Conectar a la VM
+ssh -i C:\ubuntuiso\.ssh\vboxuser gcvmuser@34.174.56.186
+
+# En la VM
+git clone https://github.com/Jorgeaapaz/MISEIA_1-4-150-ayuntamientos.git ~/MISEIA150_ayuntamientos
+cd ~/MISEIA150_ayuntamientos
+
+# Copiar el archivo de variables de producción (desde local)
+# scp env.production gcvmuser@34.174.56.186:~/MISEIA150_ayuntamientos/
+
+# Arrancar con Docker
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### Secrets necesarios en GitHub Actions
+
+Configurar en el repositorio (Settings > Secrets > Actions):
+- `SSH_PRIVATE_KEY` — clave privada SSH para conectar a la VM
+- `JWT_SECRET_PROD` — secreto JWT de producción (mínimo 32 chars)
+- `MONGODB_URI_PROD` — `mongodb://admin:MongoAdmin2024!@34.174.56.186:27020/?authSource=admin`
+- `AWS_USERNAME_PROD`, `AWS_PASSWORD_PROD`, `AWS_URL_PROD` — credenciales RustFS
+
+---
+
 ## Repositorios
 
 - **GitHub:** https://github.com/Jorgeaapaz/MISEIA_1-4-150-ayuntamientos
 - **GitLab:** https://gitlab.codecrypto.academy/jorgeaapaz/MISEIA_1-4-150-ayuntamientos
+
+---
+
+## Updates — 2026-06-27
+
+### Testing
+- Added **Jest** unit tests (`__tests__/unit/`) for `lib/auth.ts`, `lib/registro-numero.ts`, `lib/expediente-codigo.ts` — 22 tests, all passing
+- Added **Playwright** E2E config (`playwright.config.ts`) and smoke tests (`__tests__/e2e/auth.spec.ts`)
+- Added `npm test`, `npm run test:coverage`, `npm run test:e2e` scripts to `package.json`
+- Added `jest.config.ts` with ts-jest preset
+
+### CI/CD
+- Added **GitHub Actions** workflow (`.github/workflows/ci-deploy.yml`): lint → test → build → deploy to GCI VM on push to `master`
+- Added **GitLab CI** pipeline (`.gitlab-ci.yml`): lint → test → build (NODE_ENV=production only here) → deploy
+
+### Infrastructure & Deploy
+- Added **Dockerfile** (multi-stage: deps → builder → runner with standalone output)
+- Added `docker-compose.prod.yml` for GCI VM deployment behind Traefik (`ayuntamientos.deviaaps.com`)
+- Added `env.production` template (excluded from git) with production environment variables
+- Updated `next.config.ts` with `output: 'standalone'` for optimized Docker builds
+
+### Environment
+- Added `.env.example` with all required variables (placeholder values, safe to commit)
+- Fixed `.gitignore` to allow `.env.example` while blocking `.env.local` and `env.production`
+
+### UI Components
+- Added `components/ui/Skeleton.tsx` — animated skeleton loader (SkeletonCard, SkeletonList, SkeletonTableRow)
+- Added `components/ui/EmptyState.tsx` — empty state with icon, title, description, optional action
+- Added `components/ui/ErrorState.tsx` — error display with retry callback
+- Updated `app/mis-registros/page.tsx` to use Skeleton on load, ErrorState with retry, EmptyState when no records
+
+### Documentation
+- Added `docs/architecture.md` with 4 Mermaid diagrams: component overview, auth sequence, instancia sequence, role/access model
+- Added `docs/decisions/ADR-001` through `ADR-004`: JWT/localStorage, MongoDB, Magic Link, App Router — each with context, decision, trade-offs, and rejected alternatives
+- Updated README with Architecture section (Mermaid diagram), Decisiones Técnicas table, Testing section, Deploy a Producción section, and Uso de IA y Revisión Crítica section
+- Added `docs/compliance/`: compliance_report.md, pert_compliance_plan.md, and 8 individual disciplined prompt files (`001`–`008`)
+
+### Bug Fixes
+- Fixed `eslint` errors in `context/GlobalContext.tsx`, `app/admin/sede/page.tsx`, `app/auth/verify/page.tsx` (react-hooks/set-state-in-effect)

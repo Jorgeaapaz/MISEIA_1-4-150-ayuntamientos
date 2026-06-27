@@ -22,6 +22,7 @@ export default function AdminSedePage() {
 
   useEffect(() => {
     if (configSede) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setForm({
         nombreAyuntamiento: configSede.nombreAyuntamiento,
         colorAccent: configSede.colorAccent,
@@ -32,6 +33,7 @@ export default function AdminSedePage() {
         logoUrl: configSede.logoUrl,
         slug: configSede.slug,
       });
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [configSede]);
 

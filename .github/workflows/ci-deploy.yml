@@ -1,0 +1,92 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Build production
+        run: npm run build
+        env:
+          NODE_ENV: production
+          MONGODB_URI: ${{ secrets.MONGODB_URI_PROD }}
+          MONGODB_DB: sede_electronica
+          JWT_SECRET: ${{ secrets.JWT_SECRET_PROD }}
+          AWS_USERNAME: ${{ secrets.AWS_USERNAME_PROD }}
+          AWS_PASSWORD: ${{ secrets.AWS_PASSWORD_PROD }}
+          AWS_REGION: us-east-1
+          AWS_URL: ${{ secrets.AWS_URL_PROD }}
+          AWS_BUCKET: sede-electronica
+          MAILHOG_HOST: mailhog
+          MAIL_PORT: "1025"
+          NEXT_PUBLIC_API_URL: https://ayuntamientos.deviaaps.com
+
+  deploy:
+    name: Deploy to GCI VM
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 34.174.56.186 >> ~/.ssh/known_hosts
+      - name: Deploy to VM
+        run: |
+          ssh -i ~/.ssh/deploy_key gcvmuser@34.174.56.186 "
+            set -e
+            APP_DIR=~/MISEIA150_ayuntamientos
+            if [ ! -d \$APP_DIR ]; then
+              git clone https://github.com/Jorgeaapaz/MISEIA_1-4-150-ayuntamientos.git \$APP_DIR
+            fi
+            cd \$APP_DIR
+            git pull origin master
+            docker compose -f docker-compose.prod.yml up -d --build
+          "

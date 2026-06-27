@@ -1,0 +1,73 @@
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+default:
+  image: node:20-alpine
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - node_modules/
+  before_script:
+    - npm ci
+
+lint:
+  stage: lint
+  script:
+    - npm run lint
+
+test:
+  stage: test
+  script:
+    - npm test
+    - npm run test:coverage
+  coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths:
+      - coverage/
+    expire_in: 1 week
+
+build:
+  stage: build
+  variables:
+    NODE_ENV: production
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - .next/
+    expire_in: 1 hour
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H 34.174.56.186 >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - |
+      ssh gcvmuser@34.174.56.186 "
+        set -e
+        APP_DIR=~/MISEIA150_ayuntamientos
+        if [ ! -d \$APP_DIR ]; then
+          git clone https://github.com/Jorgeaapaz/MISEIA_1-4-150-ayuntamientos.git \$APP_DIR
+        fi
+        cd \$APP_DIR
+        git pull origin master
+        docker compose -f docker-compose.prod.yml up -d --build
+      "
+  only:
+    - master
