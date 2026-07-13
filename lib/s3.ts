@@ -18,6 +18,18 @@ const s3 = new S3Client({
   },
 });
 
+// Presigned URLs are consumed by the browser, so they must use the
+// publicly reachable HTTPS endpoint, not an internal Docker network host.
+const s3Public = new S3Client({
+  region: process.env.AWS_REGION || 'us-east-1',
+  endpoint: process.env.AWS_PUBLIC_URL || process.env.AWS_URL || 'http://localhost:10000',
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.AWS_USERNAME || 'minioadmin',
+    secretAccessKey: process.env.AWS_PASSWORD || 'minioadmin1234',
+  },
+});
+
 const BUCKET = process.env.AWS_BUCKET || 'sede-electronica';
 
 let bucketReady: Promise<void> | null = null;
@@ -49,7 +61,7 @@ export async function uploadFile(key: string, body: Buffer, contentType: string)
 
 export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
+  return getSignedUrl(s3Public, command, { expiresIn });
 }
 
 export async function deleteFile(key: string): Promise<void> {
