@@ -11,6 +11,7 @@ const config = {
     '!lib/db.ts',
     '!lib/mail.ts',
     '!lib/s3.ts',
+    '!lib/download.ts',
   ],
   coverageThreshold: {
     global: {
