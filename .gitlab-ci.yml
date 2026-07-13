@@ -48,7 +48,17 @@ deploy:
   stage: deploy
   image: alpine:latest
   before_script:
-    - apk add --no-cache openssh-client
+    - |
+      if ! command -v ssh >/dev/null; then
+        if command -v apk >/dev/null; then
+          apk add --no-cache openssh-client
+        elif command -v apt-get >/dev/null; then
+          apt-get update -qq && apt-get install -y -qq openssh-client
+        else
+          echo "No supported package manager found to install openssh-client" >&2
+          exit 1
+        fi
+      fi
     - eval $(ssh-agent -s)
     - chmod 600 "$SSH_PRIVATE_KEY"
     - ssh-add "$SSH_PRIVATE_KEY"
