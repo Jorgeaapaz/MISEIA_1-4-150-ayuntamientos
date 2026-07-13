@@ -8,8 +8,10 @@ import { useGlobal } from '@/context/GlobalContext';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { Card, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { estadoBadge } from '@/components/ui/Badge';
 import { Registro } from '@/lib/types';
+import { downloadFile } from '@/lib/download';
 
 export default function RegistroDetallePage() {
   const { user, loading } = useRequireAuth('administrado');
@@ -20,6 +22,25 @@ export default function RegistroDetallePage() {
   const [registro, setRegistro] = useState<Registro | null>(null);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState('');
+
+  const handleDownload = async (s3Key: string, nombre: string) => {
+    if (!token) return;
+    setDownloadError('');
+    setDownloadingKey(s3Key);
+    try {
+      await downloadFile(
+        `/api/registros/${id}/adjuntos/download?key=${encodeURIComponent(s3Key)}`,
+        token,
+        nombre
+      );
+    } catch (e: unknown) {
+      setDownloadError(e instanceof Error ? e.message : 'Error al descargar el archivo');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
 
   useEffect(() => {
     if (!token || !id) return;
@@ -117,6 +138,9 @@ export default function RegistroDetallePage() {
           {registro.adjuntos?.length > 0 && (
             <Card>
               <CardHeader title="Documentación adjunta" />
+              {downloadError && (
+                <p className="text-xs text-red-400 mb-2">{downloadError}</p>
+              )}
               <ul className="space-y-2">
                 {registro.adjuntos.map((adj) => (
                   <li
@@ -124,8 +148,16 @@ export default function RegistroDetallePage() {
                     className="flex items-center gap-2 text-sm"
                   >
                     <span className="text-[--muted]">📎</span>
-                    <span className="text-[--foreground]">{adj.nombre}</span>
+                    <span className="text-[--foreground] flex-1 truncate">{adj.nombre}</span>
                     <span className="text-[--muted] text-xs">({(adj.tamaño / 1024).toFixed(0)} KB)</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={downloadingKey === adj.s3Key}
+                      onClick={() => handleDownload(adj.s3Key, adj.nombre)}
+                    >
+                      Descargar
+                    </Button>
                   </li>
                 ))}
               </ul>

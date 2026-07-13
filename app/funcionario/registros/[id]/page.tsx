@@ -12,6 +12,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { estadoBadge } from '@/components/ui/Badge';
 import { Registro } from '@/lib/types';
+import { downloadFile } from '@/lib/download';
 
 export default function FuncionarioRegistroDetallePage() {
   const { user, loading } = useRequireAuth('funcionario');
@@ -23,6 +24,8 @@ export default function FuncionarioRegistroDetallePage() {
   const [registro, setRegistro] = useState<Registro | null>(null);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState('');
 
   // Expediente form
   const [showForm, setShowForm] = useState(false);
@@ -43,6 +46,23 @@ export default function FuncionarioRegistroDetallePage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setFetching(false));
   }, [token, id]);
+
+  const handleDownload = async (s3Key: string, nombre: string) => {
+    if (!token) return;
+    setDownloadError('');
+    setDownloadingKey(s3Key);
+    try {
+      await downloadFile(
+        `/api/registros/${id}/adjuntos/download?key=${encodeURIComponent(s3Key)}`,
+        token,
+        nombre
+      );
+    } catch (e: unknown) {
+      setDownloadError(e instanceof Error ? e.message : 'Error al descargar el archivo');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
 
   const handleCrearExpediente = async (e: FormEvent) => {
     e.preventDefault();
@@ -147,12 +167,23 @@ export default function FuncionarioRegistroDetallePage() {
           {registro.adjuntos?.length > 0 && (
             <Card>
               <CardHeader title="Adjuntos" />
+              {downloadError && (
+                <p className="text-xs text-red-400 mb-2">{downloadError}</p>
+              )}
               <ul className="space-y-1">
                 {registro.adjuntos.map((a) => (
                   <li key={a.s3Key} className="text-sm flex items-center gap-2">
                     <span className="text-[--muted]">📎</span>
-                    <span>{a.nombre}</span>
+                    <span className="flex-1 truncate">{a.nombre}</span>
                     <span className="text-[--muted] text-xs">({(a.tamaño / 1024).toFixed(0)} KB)</span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={downloadingKey === a.s3Key}
+                      onClick={() => handleDownload(a.s3Key, a.nombre)}
+                    >
+                      Descargar
+                    </Button>
                   </li>
                 ))}
               </ul>
